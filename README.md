@@ -8,11 +8,9 @@ Health Intelligence reads what's already in Apple Health (including the subset o
 
 **Strain**, **Sleep**, and **Activeness** — each measured against your own historical baseline, not an arbitrary target.
 
-All core processing is designed to happen locally on the user's device.
+*All core processing is designed to happen locally on the user's device.*
 
-No health data needs to be sent to an external AI service.
-No cloud inference is required.
-No recurring AI subscription is required.
+No health data needs to be sent to an external AI service. No cloud inference is required. No recurring AI subscription is required.
 
 
 This repository currently contains the foundational architecture and data pipeline: HealthKit integration, a HealthKit-independent data model, and the analysis/presentation layers wired end-to-end. The scoring algorithms themselves are the next milestone — see [Roadmap](#roadmap).
