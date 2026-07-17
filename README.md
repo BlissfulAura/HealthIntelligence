@@ -1,8 +1,16 @@
 # Health Intelligence
 
-A privacy-first iOS app that turns Apple Health data into personalized insight — not by comparing you to population averages, but to yourself.
+Private, personalized health insights — powered entirely on your iPhone.
 
+Health Intelligence is a privacy-first iOS application that transforms Apple Health data into meaningful, personalized insights using on-device analytics and AI inference.
 Health Intelligence reads what's already in Apple Health (including the subset of data your Garmin, Apple Watch, or other wearable syncs there), analyzes it entirely on-device, and will surface three personalized assessments: **Strain**, **Sleep**, and **Activeness** — each measured against your own historical baseline, not an arbitrary target.
+
+All core processing is designed to happen locally on the user's device.
+
+No health data needs to be sent to an external AI service.
+No cloud inference is required.
+No recurring AI subscription is required.
+
 
 This repository currently contains the foundational architecture and data pipeline: HealthKit integration, a HealthKit-independent data model, and the analysis/presentation layers wired end-to-end. The scoring algorithms themselves are the next milestone — see [Roadmap](#roadmap).
 
