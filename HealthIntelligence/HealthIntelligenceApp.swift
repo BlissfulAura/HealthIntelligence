@@ -17,7 +17,11 @@ struct HealthIntelligenceApp: App {
     var body: some Scene {
         WindowGroup {
             DashboardView(
-                viewModel: DashboardViewModel(healthKitService: healthKitService, analyzer: analyzer)
+                viewModel: DashboardViewModel(healthKitService: healthKitService, analyzer: analyzer),
+                insightsViewModel: InsightsViewModel(
+                    historyBuilder: HealthHistoryBuilder(healthKitService: healthKitService, analyzer: analyzer)
+                ),
+                importViewModel: ImportViewModel(source: GarminExportImporter(healthKitService: healthKitService))
             )
         }
     }

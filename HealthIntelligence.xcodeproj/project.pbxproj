@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		F6188C00300A9ABB00CB2D08 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F6188B32300A9ABB00CB2D77 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F6188B39300A9ABB00CB2D77;
+			remoteInfo = HealthIntelligence;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		F6188B3A300A9ABB00CB2D77 /* HealthIntelligence.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HealthIntelligence.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F6188C00300A9ABB00CB2D01 /* HealthIntelligenceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HealthIntelligenceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -110,24 +120,6 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXContainerItemProxy section */
-		F6188C00300A9ABB00CB2D08 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = F6188B32300A9ABB00CB2D77 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = F6188B39300A9ABB00CB2D77;
-			remoteInfo = HealthIntelligence;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXTargetDependency section */
-		F6188C00300A9ABB00CB2D07 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = F6188B39300A9ABB00CB2D77 /* HealthIntelligence */;
-			targetProxy = F6188C00300A9ABB00CB2D08 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXProject section */
 		F6188B32300A9ABB00CB2D77 /* Project object */ = {
 			isa = PBXProject;
@@ -198,6 +190,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F6188C00300A9ABB00CB2D07 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F6188B39300A9ABB00CB2D77 /* HealthIntelligence */;
+			targetProxy = F6188C00300A9ABB00CB2D08 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		F6188B43300A9ACD00CB2D77 /* Debug */ = {
@@ -335,6 +335,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Health Intelligence";
 				INFOPLIST_KEY_CFBundleName = "Health Intelligence";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Health Intelligence reads your heart rate, sleep, and activity data from Apple Health to show insights based on your personal baselines. Your data stays on this device.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you import a Garmin data export, Health Intelligence writes the historical data it finds (heart rate, HRV, sleep, and more) into Apple Health so it's stored alongside the rest of your health data. Your data stays on this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -371,6 +372,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Health Intelligence";
 				INFOPLIST_KEY_CFBundleName = "Health Intelligence";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Health Intelligence reads your heart rate, sleep, and activity data from Apple Health to show insights based on your personal baselines. Your data stays on this device.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you import a Garmin data export, Health Intelligence writes the historical data it finds (heart rate, HRV, sleep, and more) into Apple Health so it's stored alongside the rest of your health data. Your data stays on this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

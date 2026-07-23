@@ -15,12 +15,25 @@ import Foundation
 /// Heart rate, resting heart rate, steps, and energy values all share the
 /// same shape (a scalar value over a time interval), so they share
 /// `HealthMetricSample` rather than each getting a bespoke type.
-enum HealthMetricType: String, CaseIterable, Sendable {
+///
+/// HRV, respiration rate, and blood oxygen have real HealthKit quantity
+/// types but weren't fetched from HealthKit until the Garmin data import
+/// feature needed to write them (see Import/GarminExportImporter.swift).
+/// Stress and Body Battery are Garmin-proprietary concepts with no HealthKit
+/// equivalent at all — samples of those types never come from
+/// HealthKitService, only from an import source, and are persisted
+/// separately (see GarminSupplementalMetricsStore).
+enum HealthMetricType: String, CaseIterable, Sendable, Codable {
     case heartRate
     case restingHeartRate
     case steps
     case activeEnergyBurned
     case basalEnergyBurned
+    case heartRateVariability
+    case respirationRate
+    case bloodOxygen
+    case stress
+    case bodyBattery
 
     var displayName: String {
         switch self {
@@ -29,6 +42,11 @@ enum HealthMetricType: String, CaseIterable, Sendable {
         case .steps: "Steps"
         case .activeEnergyBurned: "Active Energy"
         case .basalEnergyBurned: "Resting Energy"
+        case .heartRateVariability: "Heart Rate Variability"
+        case .respirationRate: "Respiration Rate"
+        case .bloodOxygen: "Blood Oxygen"
+        case .stress: "Stress"
+        case .bodyBattery: "Body Battery"
         }
     }
 
@@ -39,6 +57,10 @@ enum HealthMetricType: String, CaseIterable, Sendable {
         case .heartRate, .restingHeartRate: "bpm"
         case .steps: "steps"
         case .activeEnergyBurned, .basalEnergyBurned: "kcal"
+        case .heartRateVariability: "ms"
+        case .respirationRate: "brpm"
+        case .bloodOxygen: "%"
+        case .stress, .bodyBattery: "" // both are unitless 0...100 Garmin scores
         }
     }
 }
@@ -60,21 +82,45 @@ enum BiologicalSex: Sendable {
 
 /// Which device/app a sample came from. Useful because a single metric
 /// (e.g. heart rate) may be written by both a Garmin watch and iPhone.
-struct HealthSource: Sendable, Hashable {
+struct HealthSource: Sendable, Hashable, Codable {
     let name: String
     let bundleIdentifier: String
+    /// The true original provenance for a sample this app *wrote* into
+    /// HealthKit on an import's behalf (e.g. "Garmin Connect Export").
+    /// HealthKit always attributes a written sample's `name`/
+    /// `bundleIdentifier` to the writing app — it has no concept of "this
+    /// app wrote it, but it really came from there" — so this is carried
+    /// as custom sample metadata instead (see
+    /// `originalSourceMetadataKey`) and is `nil` for samples that were
+    /// never imported.
+    var originalSourceDescription: String?
+
+    /// The HKMetadata key used to stash `originalSourceDescription` on
+    /// samples this app writes to HealthKit. Shared between the write path
+    /// (HealthKitService) and the read path (the `HKSample` conversion
+    /// extension in the same file) so they never drift apart.
+    static let originalSourceMetadataKey = "com.healthintelligence.import.originalSource"
 }
 
 // MARK: - Numeric samples
 
 /// A single scalar health measurement over a time interval.
-struct HealthMetricSample: Identifiable, Sendable {
-    let id = UUID()
+struct HealthMetricSample: Identifiable, Sendable, Codable {
+    let id: UUID
     let type: HealthMetricType
     let value: Double
     let startDate: Date
     let endDate: Date
     let source: HealthSource
+
+    init(id: UUID = UUID(), type: HealthMetricType, value: Double, startDate: Date, endDate: Date, source: HealthSource) {
+        self.id = id
+        self.type = type
+        self.value = value
+        self.startDate = startDate
+        self.endDate = endDate
+        self.source = source
+    }
 }
 
 // MARK: - Sleep

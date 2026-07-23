@@ -52,6 +52,9 @@ final class HealthKitService {
             HKObjectType.quantityType(forIdentifier: .stepCount),
             HKObjectType.quantityType(forIdentifier: .activeEnergyBurned),
             HKObjectType.quantityType(forIdentifier: .basalEnergyBurned),
+            HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN),
+            HKObjectType.quantityType(forIdentifier: .respiratoryRate),
+            HKObjectType.quantityType(forIdentifier: .oxygenSaturation),
             HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
             HKObjectType.characteristicType(forIdentifier: .dateOfBirth),
             HKObjectType.characteristicType(forIdentifier: .biologicalSex),
@@ -59,7 +62,25 @@ final class HealthKitService {
         ]
         let readTypes = Set(candidateTypes.compactMap { $0 })
 
-        _ = try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+        // Share (write) access is only needed for the Import Data feature —
+        // backfilling history from a Garmin export into HealthKit itself,
+        // so it benefits from HealthKit's own storage/provenance rather
+        // than a parallel local database. Basal energy isn't written since
+        // no import source currently produces a value for it.
+        let candidateShareTypes: [HKSampleType?] = [
+            HKObjectType.quantityType(forIdentifier: .heartRate),
+            HKObjectType.quantityType(forIdentifier: .restingHeartRate),
+            HKObjectType.quantityType(forIdentifier: .stepCount),
+            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned),
+            HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN),
+            HKObjectType.quantityType(forIdentifier: .respiratoryRate),
+            HKObjectType.quantityType(forIdentifier: .oxygenSaturation),
+            HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
+            HKObjectType.workoutType(),
+        ]
+        let shareTypes = Set(candidateShareTypes.compactMap { $0 })
+
+        _ = try await healthStore.requestAuthorization(toShare: shareTypes, read: readTypes)
     }
 
     // MARK: - Quantity samples
@@ -112,6 +133,57 @@ final class HealthKitService {
             start: start,
             end: end
         )
+    }
+
+    func heartRateVariabilitySamples(from start: Date, to end: Date) async throws -> [HealthMetricSample] {
+        try await quantitySamples(
+            identifier: .heartRateVariabilitySDNN,
+            unit: .secondUnit(with: .milli),
+            metricType: .heartRateVariability,
+            start: start,
+            end: end
+        )
+    }
+
+    func respirationRateSamples(from start: Date, to end: Date) async throws -> [HealthMetricSample] {
+        try await quantitySamples(
+            identifier: .respiratoryRate,
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            metricType: .respirationRate,
+            start: start,
+            end: end
+        )
+    }
+
+    func bloodOxygenSamples(from start: Date, to end: Date) async throws -> [HealthMetricSample] {
+        try await quantitySamples(
+            identifier: .oxygenSaturation,
+            unit: .percent(),
+            metricType: .bloodOxygen,
+            start: start,
+            end: end
+        )
+    }
+
+    /// Looks up existing samples generically by `HealthMetricType`, for
+    /// callers (currently just the Garmin importer) that need to check
+    /// what HealthKit already has before writing more — without needing to
+    /// know which specific fetch method or HealthKit identifier backs each
+    /// type. Returns an empty array for types HealthKit has no query for
+    /// (Stress, Body Battery), rather than throwing, since "nothing exists
+    /// in HealthKit for this type" is simply true for those.
+    func existingSamples(ofType type: HealthMetricType, from start: Date, to end: Date) async throws -> [HealthMetricSample] {
+        switch type {
+        case .heartRate: try await heartRateSamples(from: start, to: end)
+        case .restingHeartRate: try await restingHeartRateSamples(from: start, to: end)
+        case .steps: try await stepSamples(from: start, to: end)
+        case .activeEnergyBurned: try await activeEnergySamples(from: start, to: end)
+        case .basalEnergyBurned: try await basalEnergySamples(from: start, to: end)
+        case .heartRateVariability: try await heartRateVariabilitySamples(from: start, to: end)
+        case .respirationRate: try await respirationRateSamples(from: start, to: end)
+        case .bloodOxygen: try await bloodOxygenSamples(from: start, to: end)
+        case .stress, .bodyBattery: []
+        }
     }
 
     private func quantitySamples(
@@ -226,6 +298,121 @@ final class HealthKitService {
         }
     }
 
+    // MARK: - Writing (Import)
+    //
+    // Only used by import sources (see Import/GarminExportImporter.swift) to
+    // backfill HealthKit-native types from an external export. Every method
+    // stamps `HealthSource.originalSourceMetadataKey` in HKMetadata so the
+    // true origin survives even though HealthKit itself always attributes a
+    // written sample to this app, never the original external source.
+
+    /// Writes quantity samples of a single `HealthMetricType` to HealthKit.
+    /// All samples must share the same type. Throws if HealthKit has no
+    /// quantity type for it (Stress, Body Battery have none — see
+    /// GarminSupplementalMetricsStore, which is where those live instead).
+    func saveQuantitySamples(_ samples: [HealthMetricSample]) async throws {
+        guard let first = samples.first else { return }
+        guard let (identifier, unit) = Self.quantityIdentifier(for: first.type),
+            let quantityType = HKObjectType.quantityType(forIdentifier: identifier) else {
+            throw HealthKitServiceError.dataTypeUnavailable(first.type.displayName)
+        }
+
+        let hkSamples = samples.map { sample in
+            HKQuantitySample(
+                type: quantityType,
+                quantity: HKQuantity(unit: unit, doubleValue: sample.value),
+                start: sample.startDate,
+                end: sample.endDate,
+                metadata: Self.metadata(for: sample.source)
+            )
+        }
+        try await healthStore.save(hkSamples)
+    }
+
+    /// Writes sleep-stage segments to HealthKit as category samples.
+    func saveSleepSegments(_ segments: [SleepStageSegment]) async throws {
+        guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else {
+            throw HealthKitServiceError.dataTypeUnavailable("Sleep")
+        }
+
+        let hkSamples = segments.compactMap { segment -> HKCategorySample? in
+            guard let value = segment.stage.categoryValue else { return nil }
+            return HKCategorySample(
+                type: sleepType,
+                value: value,
+                start: segment.startDate,
+                end: segment.endDate,
+                metadata: Self.metadata(for: segment.source)
+            )
+        }
+        try await healthStore.save(hkSamples)
+    }
+
+    /// Writes a single historical (already-completed) workout to HealthKit
+    /// via `HKWorkoutBuilder` used without a live session — the modern
+    /// replacement for the deprecated `HKWorkout(...)` convenience
+    /// initializer when backfilling finished workouts from another source.
+    ///
+    /// `activityTypeHint` is whatever free-text activity name the source
+    /// provided (e.g. Garmin's raw "running"/"road_biking"); mapped to the
+    /// closest `HKWorkoutActivityType` by keyword, defaulting to `.other`.
+    func saveWorkout(_ workout: Workout, activityTypeHint: String) async throws {
+        let configuration = HKWorkoutConfiguration()
+        configuration.activityType = Self.workoutActivityType(forHint: activityTypeHint)
+
+        let builder = HKWorkoutBuilder(healthStore: healthStore, configuration: configuration, device: nil)
+        try await builder.beginCollection(at: workout.startDate)
+
+        if let energy = workout.totalActiveEnergyBurned,
+            let energyType = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) {
+            let sample = HKQuantitySample(
+                type: energyType,
+                quantity: HKQuantity(unit: .kilocalorie(), doubleValue: energy),
+                start: workout.startDate,
+                end: workout.endDate,
+                metadata: Self.metadata(for: workout.source)
+            )
+            try await builder.addSamples([sample])
+        }
+
+        try await builder.endCollection(at: workout.endDate)
+        _ = try await builder.finishWorkout()
+    }
+
+    private static func metadata(for source: HealthSource) -> [String: Any] {
+        guard let description = source.originalSourceDescription else { return [:] }
+        return [HealthSource.originalSourceMetadataKey: description]
+    }
+
+    private static func quantityIdentifier(for type: HealthMetricType) -> (HKQuantityTypeIdentifier, HKUnit)? {
+        switch type {
+        case .heartRate: (.heartRate, HKUnit.count().unitDivided(by: .minute()))
+        case .restingHeartRate: (.restingHeartRate, HKUnit.count().unitDivided(by: .minute()))
+        case .steps: (.stepCount, .count())
+        case .activeEnergyBurned: (.activeEnergyBurned, .kilocalorie())
+        case .heartRateVariability: (.heartRateVariabilitySDNN, .secondUnit(with: .milli))
+        case .respirationRate: (.respiratoryRate, HKUnit.count().unitDivided(by: .minute()))
+        case .bloodOxygen: (.oxygenSaturation, .percent())
+        case .basalEnergyBurned, .stress, .bodyBattery: nil
+        }
+    }
+
+    private static func workoutActivityType(forHint hint: String) -> HKWorkoutActivityType {
+        let hint = hint.lowercased()
+        if hint.contains("run") { return .running }
+        if hint.contains("cycl") || hint.contains("bik") { return .cycling }
+        if hint.contains("walk") { return .walking }
+        if hint.contains("swim") { return .swimming }
+        if hint.contains("hik") { return .hiking }
+        if hint.contains("strength") { return .traditionalStrengthTraining }
+        if hint.contains("yoga") { return .yoga }
+        if hint.contains("row") { return .rowing }
+        if hint.contains("elliptical") { return .elliptical }
+        if hint.contains("stair") { return .stairClimbing }
+        if hint.contains("hiit") || hint.contains("interval") { return .highIntensityIntervalTraining }
+        return .other
+    }
+
     // MARK: - Characteristic data
 
     /// The user's age in whole years, from HealthKit's characteristic data
@@ -260,7 +447,8 @@ private extension HealthSource {
     init(sample: HKSample) {
         self.init(
             name: sample.sourceRevision.source.name,
-            bundleIdentifier: sample.sourceRevision.source.bundleIdentifier
+            bundleIdentifier: sample.sourceRevision.source.bundleIdentifier,
+            originalSourceDescription: sample.metadata?[HealthSource.originalSourceMetadataKey] as? String
         )
     }
 }
@@ -276,6 +464,19 @@ private extension SleepStage {
         case .asleepREM: self = .rem
         case .asleepUnspecified: self = .unspecified
         @unknown default: self = .unspecified
+        }
+    }
+
+    /// The reverse of `init?(categoryValue:)`, for writing sleep segments
+    /// back to HealthKit during import.
+    var categoryValue: Int? {
+        switch self {
+        case .inBed: HKCategoryValueSleepAnalysis.inBed.rawValue
+        case .awake: HKCategoryValueSleepAnalysis.awake.rawValue
+        case .core: HKCategoryValueSleepAnalysis.asleepCore.rawValue
+        case .deep: HKCategoryValueSleepAnalysis.asleepDeep.rawValue
+        case .rem: HKCategoryValueSleepAnalysis.asleepREM.rawValue
+        case .unspecified: HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
         }
     }
 }

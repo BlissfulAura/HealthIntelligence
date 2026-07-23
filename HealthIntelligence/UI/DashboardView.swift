@@ -11,22 +11,51 @@ import SwiftUI
 
 struct DashboardView: View {
     @State private var viewModel: DashboardViewModel
+    @State private var insightsViewModel: InsightsViewModel
+    @State private var importViewModel: ImportViewModel
+    @State private var isImportPresented = false
 
-    init(viewModel: DashboardViewModel) {
+    init(viewModel: DashboardViewModel, insightsViewModel: InsightsViewModel, importViewModel: ImportViewModel) {
         _viewModel = State(initialValue: viewModel)
+        _insightsViewModel = State(initialValue: insightsViewModel)
+        _importViewModel = State(initialValue: importViewModel)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                content
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                VStack(spacing: 16) {
+                    content
+                    InsightsSection(state: insightsViewModel.state)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Overview")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        isImportPresented = true
+                    } label: {
+                        Label("Import Data", systemImage: "square.and.arrow.down.on.square")
+                    }
+                }
+            }
+            .sheet(isPresented: $isImportPresented, onDismiss: {
+                Task {
+                    await viewModel.load()
+                    await insightsViewModel.load()
+                }
+            }) {
+                ImportView(viewModel: importViewModel)
+            }
             .task { await viewModel.load() }
-            .refreshable { await viewModel.load() }
+            .task { await insightsViewModel.load() }
+            .refreshable {
+                await viewModel.load()
+                await insightsViewModel.load()
+            }
         }
     }
 
@@ -265,6 +294,75 @@ private struct ActivityCard: View {
     }
 }
 
+// MARK: - Insights
+
+private struct InsightsSection: View {
+    let state: InsightsViewModel.State
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Insights")
+                .font(.headline)
+                .padding(.horizontal, 4)
+
+            switch state {
+            case .idle, .loading:
+                DimensionCard(title: "Analyzing", symbol: "sparkles", tint: .purple) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Looking for patterns in your recent history…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            case .buildingBaseline:
+                DimensionCard(title: "Building Your Baseline", symbol: "chart.line.uptrend.xyaxis", tint: .purple) {
+                    PlaceholderRow(text: "Insights need at least \(MetricBaseline.minimumReliableSampleCount) days of Health history — check back soon.")
+                }
+            case .ready(let insights) where insights.isEmpty:
+                DimensionCard(title: "All Normal", symbol: "checkmark.circle", tint: .purple) {
+                    PlaceholderRow(text: "Nothing stands out from your recent baseline.")
+                }
+            case .ready(let insights):
+                ForEach(insights) { insight in
+                    InsightCard(insight: insight)
+                }
+            case .error(let message):
+                DimensionCard(title: "Insights Unavailable", symbol: "exclamationmark.triangle", tint: .purple) {
+                    PlaceholderRow(text: message)
+                }
+            }
+        }
+    }
+}
+
+private struct InsightCard: View {
+    let insight: HealthInsight
+
+    var body: some View {
+        DimensionCard(title: insight.title, symbol: "sparkles", tint: tint(for: insight.severity)) {
+            Text(insight.narrative)
+                .font(.subheadline)
+            HStack {
+                Text(insight.severity.label)
+                Spacer()
+                Text("\(Int((insight.confidence * 100).rounded()))% confidence")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func tint(for severity: SignalSeverity) -> Color {
+        switch severity {
+        case .info: .blue
+        case .mild: .yellow
+        case .moderate: .orange
+        case .significant: .red
+        }
+    }
+}
+
 // MARK: - Shared row views
 
 private struct MetricRow: View {
@@ -308,5 +406,10 @@ private struct PlaceholderRow: View {
 }
 
 #Preview {
-    DashboardView(viewModel: DashboardViewModel(healthKitService: HealthKitService()))
+    let healthKitService = HealthKitService()
+    DashboardView(
+        viewModel: DashboardViewModel(healthKitService: healthKitService),
+        insightsViewModel: InsightsViewModel(historyBuilder: HealthHistoryBuilder(healthKitService: healthKitService)),
+        importViewModel: ImportViewModel(source: GarminExportImporter(healthKitService: healthKitService))
+    )
 }
