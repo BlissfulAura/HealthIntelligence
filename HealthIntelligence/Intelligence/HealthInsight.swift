@@ -132,6 +132,43 @@ struct HealthInsightEngine {
 
     init() {}
 
+    /// Every metric's day-by-day MetricState history, keyed by metric — the
+    /// same computation `generateInsights` runs internally, exposed so
+    /// callers that just need "today's percentile/deviation" (e.g. a Sleep
+    /// or Activeness score in the UI) don't need to duplicate baseline math
+    /// that already exists here, or run the full signal/pattern pipeline
+    /// just to read one number.
+    func statesByMetric(
+        from snapshots: [DailyHealthSnapshot],
+        referenceDate: Date,
+        calendar: Calendar = .current
+    ) -> [IntelligenceMetric: [MetricState]] {
+        let seriesByMetric = Self.series(from: snapshots)
+
+        var result: [IntelligenceMetric: [MetricState]] = [:]
+        for metric in IntelligenceMetric.allCases {
+            guard let series = seriesByMetric[metric] else { continue }
+            result[metric] = baselineEngine.metricStates(
+                metric: metric,
+                series: series,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+        }
+        return result
+    }
+
+    /// Just today's (or the most recent available day's) MetricState per
+    /// metric — the convenience form of `statesByMetric` for callers that
+    /// only care about the latest value, not the full recent-window history.
+    func latestStates(
+        from snapshots: [DailyHealthSnapshot],
+        referenceDate: Date,
+        calendar: Calendar = .current
+    ) -> [IntelligenceMetric: MetricState] {
+        statesByMetric(from: snapshots, referenceDate: referenceDate, calendar: calendar).compactMapValues(\.last)
+    }
+
     /// Runs the full pipeline over already-built daily history and returns
     /// the day's insights, most severe first.
     func generateInsights(
@@ -141,18 +178,7 @@ struct HealthInsightEngine {
     ) -> [HealthInsight] {
         guard !snapshots.isEmpty else { return [] }
 
-        let seriesByMetric = Self.series(from: snapshots)
-
-        var statesByMetric: [IntelligenceMetric: [MetricState]] = [:]
-        for metric in IntelligenceMetric.allCases {
-            guard let series = seriesByMetric[metric] else { continue }
-            statesByMetric[metric] = baselineEngine.metricStates(
-                metric: metric,
-                series: series,
-                referenceDate: referenceDate,
-                calendar: calendar
-            )
-        }
+        let statesByMetric = statesByMetric(from: snapshots, referenceDate: referenceDate, calendar: calendar)
 
         var signals: [HealthSignal] = []
         var trendSignals: [HealthSignal] = []

@@ -32,6 +32,13 @@ final class InsightsViewModel {
     /// Body Battery, ...) without DashboardViewModel re-fetching the same
     /// HealthKit history a second time.
     private(set) var latestSnapshot: DailyHealthSnapshot?
+    /// Today's MetricState per metric (current value, personal baseline,
+    /// percentile, trend) — the same numbers backing the insight feed,
+    /// exposed so the UI can also derive simple 0-100 scores (Sleep,
+    /// Activeness) from real personal-baseline percentiles instead of
+    /// showing only a raw value the way Strain's score used to be the only
+    /// "scored" tile.
+    private(set) var latestStates: [IntelligenceMetric: MetricState] = [:]
 
     private let historyBuilder: HealthHistoryBuilder
     private let insightEngine: HealthInsightEngine
@@ -46,6 +53,7 @@ final class InsightsViewModel {
         do {
             let snapshots = try await historyBuilder.buildHistory()
             latestSnapshot = snapshots.last
+            latestStates = insightEngine.latestStates(from: snapshots, referenceDate: Date())
             guard snapshots.count >= MetricBaseline.minimumReliableSampleCount else {
                 state = .buildingBaseline
                 return
