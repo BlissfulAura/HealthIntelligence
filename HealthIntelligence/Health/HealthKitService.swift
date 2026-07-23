@@ -55,6 +55,7 @@ final class HealthKitService {
             HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN),
             HKObjectType.quantityType(forIdentifier: .respiratoryRate),
             HKObjectType.quantityType(forIdentifier: .oxygenSaturation),
+            HKObjectType.quantityType(forIdentifier: .vo2Max),
             HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
             HKObjectType.characteristicType(forIdentifier: .dateOfBirth),
             HKObjectType.characteristicType(forIdentifier: .biologicalSex),
@@ -75,6 +76,7 @@ final class HealthKitService {
             HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN),
             HKObjectType.quantityType(forIdentifier: .respiratoryRate),
             HKObjectType.quantityType(forIdentifier: .oxygenSaturation),
+            HKObjectType.quantityType(forIdentifier: .vo2Max),
             HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
             HKObjectType.workoutType(),
         ]
@@ -165,6 +167,16 @@ final class HealthKitService {
         )
     }
 
+    func vo2MaxSamples(from start: Date, to end: Date) async throws -> [HealthMetricSample] {
+        try await quantitySamples(
+            identifier: .vo2Max,
+            unit: Self.vo2MaxUnit,
+            metricType: .vo2Max,
+            start: start,
+            end: end
+        )
+    }
+
     /// Looks up existing samples generically by `HealthMetricType`, for
     /// callers (currently just the Garmin importer) that need to check
     /// what HealthKit already has before writing more — without needing to
@@ -182,9 +194,15 @@ final class HealthKitService {
         case .heartRateVariability: try await heartRateVariabilitySamples(from: start, to: end)
         case .respirationRate: try await respirationRateSamples(from: start, to: end)
         case .bloodOxygen: try await bloodOxygenSamples(from: start, to: end)
+        case .vo2Max: try await vo2MaxSamples(from: start, to: end)
         case .stress, .bodyBattery: []
         }
     }
+
+    /// VO2 Max's HealthKit unit ("mL/(kg·min)") has no `HKUnit` convenience
+    /// constructor, unlike the other quantity types here — it's built from
+    /// its unit string once and reused by both the read and write paths.
+    private static let vo2MaxUnit = HKUnit(from: "ml/(kg*min)")
 
     private func quantitySamples(
         identifier: HKQuantityTypeIdentifier,
@@ -393,6 +411,7 @@ final class HealthKitService {
         case .heartRateVariability: (.heartRateVariabilitySDNN, .secondUnit(with: .milli))
         case .respirationRate: (.respiratoryRate, HKUnit.count().unitDivided(by: .minute()))
         case .bloodOxygen: (.oxygenSaturation, .percent())
+        case .vo2Max: (.vo2Max, vo2MaxUnit)
         case .basalEnergyBurned, .stress, .bodyBattery: nil
         }
     }

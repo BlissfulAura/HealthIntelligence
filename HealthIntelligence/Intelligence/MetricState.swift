@@ -27,6 +27,16 @@ enum IntelligenceMetric: String, CaseIterable, Sendable {
     case steps
     case activeEnergy
     case strainScore
+    /// Below, added so the pipeline can reason over the richer Garmin data
+    /// the Import feature already brings in (see GarminExportImporter and
+    /// GarminSupplementalMetricsStore) instead of leaving it uninterpreted
+    /// once it lands in HealthKit / the supplemental store.
+    case heartRateVariability
+    case vo2Max
+    case respirationRate
+    case bloodOxygen
+    case stress
+    case bodyBattery
 
     var displayName: String {
         switch self {
@@ -35,6 +45,12 @@ enum IntelligenceMetric: String, CaseIterable, Sendable {
         case .steps: "Steps"
         case .activeEnergy: "Active Energy"
         case .strainScore: "Strain"
+        case .heartRateVariability: "Heart Rate Variability"
+        case .vo2Max: "VO2 Max"
+        case .respirationRate: "Respiration Rate"
+        case .bloodOxygen: "Blood Oxygen"
+        case .stress: "Stress"
+        case .bodyBattery: "Body Battery"
         }
     }
 
@@ -45,8 +61,8 @@ enum IntelligenceMetric: String, CaseIterable, Sendable {
     /// a neutral statistical snapshot with no value judgment baked in.
     var unfavorableDirection: TrendDirection {
         switch self {
-        case .restingHeartRate, .strainScore: .rising
-        case .sleepDuration, .steps, .activeEnergy: .falling
+        case .restingHeartRate, .strainScore, .respirationRate, .stress: .rising
+        case .sleepDuration, .steps, .activeEnergy, .heartRateVariability, .vo2Max, .bloodOxygen, .bodyBattery: .falling
         }
     }
 
@@ -66,6 +82,16 @@ enum IntelligenceMetric: String, CaseIterable, Sendable {
             return "\(Int(value.rounded())) steps"
         case .activeEnergy:
             return "\(Int(value.rounded())) kcal"
+        case .heartRateVariability:
+            return "\(Int(value.rounded())) ms"
+        case .vo2Max:
+            return String(format: "%.1f mL/kg/min", value)
+        case .respirationRate:
+            return String(format: "%.1f brpm", value)
+        case .bloodOxygen:
+            return "\(Int((value * 100).rounded()))%"
+        case .stress, .bodyBattery:
+            return "\(Int(value.rounded()))"
         }
     }
 }

@@ -32,6 +32,7 @@ enum HealthMetricType: String, CaseIterable, Sendable, Codable {
     case heartRateVariability
     case respirationRate
     case bloodOxygen
+    case vo2Max
     case stress
     case bodyBattery
 
@@ -45,6 +46,7 @@ enum HealthMetricType: String, CaseIterable, Sendable, Codable {
         case .heartRateVariability: "Heart Rate Variability"
         case .respirationRate: "Respiration Rate"
         case .bloodOxygen: "Blood Oxygen"
+        case .vo2Max: "VO2 Max"
         case .stress: "Stress"
         case .bodyBattery: "Body Battery"
         }
@@ -60,6 +62,7 @@ enum HealthMetricType: String, CaseIterable, Sendable, Codable {
         case .heartRateVariability: "ms"
         case .respirationRate: "brpm"
         case .bloodOxygen: "%"
+        case .vo2Max: "mL/kg/min"
         case .stress, .bodyBattery: "" // both are unitless 0...100 Garmin scores
         }
     }

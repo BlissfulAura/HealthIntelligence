@@ -26,6 +26,12 @@ final class InsightsViewModel {
     }
 
     private(set) var state: State = .idle
+    /// The most recent day's full snapshot (every metric the history
+    /// pipeline fetched, not just what's used for insights) — exposed so
+    /// the Key Metrics strip can show Garmin's richer data (HRV, VO2 Max,
+    /// Body Battery, ...) without DashboardViewModel re-fetching the same
+    /// HealthKit history a second time.
+    private(set) var latestSnapshot: DailyHealthSnapshot?
 
     private let historyBuilder: HealthHistoryBuilder
     private let insightEngine: HealthInsightEngine
@@ -39,6 +45,7 @@ final class InsightsViewModel {
         state = .loading
         do {
             let snapshots = try await historyBuilder.buildHistory()
+            latestSnapshot = snapshots.last
             guard snapshots.count >= MetricBaseline.minimumReliableSampleCount else {
                 state = .buildingBaseline
                 return

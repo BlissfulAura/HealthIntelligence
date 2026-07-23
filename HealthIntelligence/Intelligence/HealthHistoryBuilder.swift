@@ -35,20 +35,66 @@ struct DailyHealthSnapshot: Sendable {
     /// Only populated for the most recent `strainWindowDays` — see this
     /// file's header for why.
     let strainScore: Double?
+    /// Below, the richer Garmin metrics the Import feature already brings
+    /// into HealthKit (HRV, VO2 Max, Respiration, Blood Oxygen) or the local
+    /// supplemental store (Stress, Body Battery — see
+    /// GarminSupplementalMetricsStore). All optional and simply absent on
+    /// days/sources without them; HRV and VO2 Max in particular are
+    /// naturally sparse (not every device/day produces a reading).
+    let heartRateVariability: Double?
+    let vo2Max: Double?
+    let respirationRate: Double?
+    let bloodOxygen: Double?
+    let stress: Double?
+    let bodyBattery: Double?
+
+    init(
+        date: Date,
+        restingHeartRate: Double?,
+        sleepDuration: TimeInterval?,
+        steps: Double,
+        activeEnergy: Double,
+        strainScore: Double?,
+        heartRateVariability: Double? = nil,
+        vo2Max: Double? = nil,
+        respirationRate: Double? = nil,
+        bloodOxygen: Double? = nil,
+        stress: Double? = nil,
+        bodyBattery: Double? = nil
+    ) {
+        self.date = date
+        self.restingHeartRate = restingHeartRate
+        self.sleepDuration = sleepDuration
+        self.steps = steps
+        self.activeEnergy = activeEnergy
+        self.strainScore = strainScore
+        self.heartRateVariability = heartRateVariability
+        self.vo2Max = vo2Max
+        self.respirationRate = respirationRate
+        self.bloodOxygen = bloodOxygen
+        self.stress = stress
+        self.bodyBattery = bodyBattery
+    }
 }
 
 struct HealthHistoryBuilder {
     private let healthKitService: HealthKitService
     private let analyzer: HealthAnalyzer
+    private let supplementalStore: GarminSupplementalMetricsStore
 
     /// Days of RHR/sleep/steps/energy history to fetch.
     var historyWindowDays: Int = 60
     /// Days to compute a full TRIMP strain score for (see file header).
     var strainWindowDays: Int = 10
 
-    init(healthKitService: HealthKitService, analyzer: HealthAnalyzer = HealthAnalyzer()) {
+    init(
+        healthKitService: HealthKitService,
+        analyzer: HealthAnalyzer = HealthAnalyzer(),
+        supplementalStore: GarminSupplementalMetricsStore = GarminSupplementalMetricsStore()
+    ) {
         self.healthKitService = healthKitService
         self.analyzer = analyzer
+        self.supplementalStore = supplementalStore
     }
 
     func buildHistory(endingAt referenceDate: Date = Date(), calendar: Calendar = .current) async throws -> [DailyHealthSnapshot] {
@@ -68,10 +114,21 @@ struct HealthHistoryBuilder {
         async let sleepSessions = healthKitService.sleepSessions(from: historyStart, to: endExclusive)
         async let strainWindowHeartRate = healthKitService.heartRateSamples(from: strainWindowStart, to: endExclusive)
         async let strainWindowWorkouts = healthKitService.workouts(from: strainWindowStart, to: endExclusive)
+        async let hrvSamples = healthKitService.heartRateVariabilitySamples(from: historyStart, to: endExclusive)
+        async let vo2MaxSamples = healthKitService.vo2MaxSamples(from: historyStart, to: endExclusive)
+        async let respirationSamples = healthKitService.respirationRateSamples(from: historyStart, to: endExclusive)
+        async let bloodOxygenSamples = healthKitService.bloodOxygenSamples(from: historyStart, to: endExclusive)
 
-        let (rhr, steps, activeEnergy, sleep, heartRate, workouts) = try await (
-            rhrSamples, stepSamples, activeEnergySamples, sleepSessions, strainWindowHeartRate, strainWindowWorkouts
+        let (rhr, steps, activeEnergy, sleep, heartRate, workouts, hrv, vo2Max, respiration, bloodOxygen) = try await (
+            rhrSamples, stepSamples, activeEnergySamples, sleepSessions, strainWindowHeartRate, strainWindowWorkouts,
+            hrvSamples, vo2MaxSamples, respirationSamples, bloodOxygenSamples
         )
+
+        // Stress and Body Battery have no HealthKit presence at all — they
+        // live only in GarminSupplementalMetricsStore (see that file). Not
+        // worth throwing over; an empty/missing store just means no data.
+        let stressSamples = (try? supplementalStore.samples(type: .stress, from: historyStart, to: endExclusive)) ?? []
+        let bodyBatterySamples = (try? supplementalStore.samples(type: .bodyBattery, from: historyStart, to: endExclusive)) ?? []
 
         let dailyRHR = Self.dailyValues(from: rhr, calendar: calendar, aggregation: .average)
         let dailySteps = Self.dailyValues(from: steps, calendar: calendar, aggregation: .sum)
@@ -85,12 +142,24 @@ struct HealthHistoryBuilder {
             to: referenceDate,
             calendar: calendar
         )
+        let dailyHRV = Self.dailyValues(from: hrv, calendar: calendar, aggregation: .average)
+        let dailyVO2Max = Self.dailyValues(from: vo2Max, calendar: calendar, aggregation: .average)
+        let dailyRespiration = Self.dailyValues(from: respiration, calendar: calendar, aggregation: .average)
+        let dailyBloodOxygen = Self.dailyValues(from: bloodOxygen, calendar: calendar, aggregation: .average)
+        let dailyStress = Self.dailyValues(from: stressSamples, calendar: calendar, aggregation: .average)
+        let dailyBodyBattery = Self.dailyValues(from: bodyBatterySamples, calendar: calendar, aggregation: .average)
 
         let allDays = Set(dailyRHR.keys)
             .union(dailySteps.keys)
             .union(dailyActiveEnergy.keys)
             .union(dailySleep.keys)
             .union(dailyStrain.keys)
+            .union(dailyHRV.keys)
+            .union(dailyVO2Max.keys)
+            .union(dailyRespiration.keys)
+            .union(dailyBloodOxygen.keys)
+            .union(dailyStress.keys)
+            .union(dailyBodyBattery.keys)
 
         return allDays.sorted().map { day in
             DailyHealthSnapshot(
@@ -99,7 +168,13 @@ struct HealthHistoryBuilder {
                 sleepDuration: dailySleep[day],
                 steps: dailySteps[day] ?? 0,
                 activeEnergy: dailyActiveEnergy[day] ?? 0,
-                strainScore: dailyStrain[day]
+                strainScore: dailyStrain[day],
+                heartRateVariability: dailyHRV[day],
+                vo2Max: dailyVO2Max[day],
+                respirationRate: dailyRespiration[day],
+                bloodOxygen: dailyBloodOxygen[day],
+                stress: dailyStress[day],
+                bodyBattery: dailyBodyBattery[day]
             )
         }
     }

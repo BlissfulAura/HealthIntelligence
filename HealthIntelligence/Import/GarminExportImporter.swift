@@ -100,6 +100,7 @@ struct GarminExportImporter: HealthDataImportSource {
         try await importContinuousMetric(collected.heartRateVariability, category: .heartRateVariability, into: &importedCounts, skipped: &skippedCounts)
         try await importContinuousMetric(collected.respiration, category: .respirationRate, into: &importedCounts, skipped: &skippedCounts)
         try await importContinuousMetric(collected.bloodOxygen, category: .bloodOxygen, into: &importedCounts, skipped: &skippedCounts)
+        try await importContinuousMetric(collected.vo2Max, category: .vo2Max, into: &importedCounts, skipped: &skippedCounts)
 
         try await importSleep(collected.sleepSessions, into: &importedCounts, skipped: &skippedCounts)
         try await importWorkouts(collected.activities, into: &importedCounts, skipped: &skippedCounts)
@@ -243,6 +244,7 @@ struct GarminExportImporter: HealthDataImportSource {
         var bodyBattery: [HealthMetricSample] = []
         var respiration: [HealthMetricSample] = []
         var bloodOxygen: [HealthMetricSample] = []
+        var vo2Max: [HealthMetricSample] = []
         var sleepSessions: [SleepSession] = []
         var activities: [GarminActivityExtraction] = []
 
@@ -258,6 +260,7 @@ struct GarminExportImporter: HealthDataImportSource {
                 if let rhr = extraction.restingHeartRate { restingHeartRate.append(rhr) }
                 if let steps = extraction.steps { self.steps.append(steps) }
                 if let energy = extraction.activeEnergy { activeEnergy.append(energy) }
+                if let vo2Max = extraction.vo2Max { self.vo2Max.append(vo2Max) }
                 heartRate.append(contentsOf: extraction.heartRateSamples)
             case .sleep:
                 if let session = classifier.extractSleep(from: record, source: source) {
@@ -275,6 +278,12 @@ struct GarminExportImporter: HealthDataImportSource {
                 respiration.append(contentsOf: classifier.extractRespiration(from: record, source: source))
             case .bloodOxygen:
                 bloodOxygen.append(contentsOf: classifier.extractBloodOxygen(from: record, source: source))
+            case .vo2Max:
+                if let sample = classifier.extractVO2Max(from: record, source: source) {
+                    vo2Max.append(sample)
+                } else {
+                    unrecognizedFileCount += 1
+                }
             case .activity:
                 if let activity = classifier.extractActivity(from: record, source: source) {
                     activities.append(activity)
@@ -287,7 +296,7 @@ struct GarminExportImporter: HealthDataImportSource {
         }
 
         func dateRange() -> ClosedRange<Date>? {
-            let dates = [restingHeartRate, heartRate, steps, activeEnergy, heartRateVariability, stress, bodyBattery, respiration, bloodOxygen]
+            let dates = [restingHeartRate, heartRate, steps, activeEnergy, heartRateVariability, stress, bodyBattery, respiration, bloodOxygen, vo2Max]
                 .flatMap { $0 }.map(\.startDate)
                 + sleepSessions.compactMap(\.startDate)
                 + activities.map(\.workout.startDate)

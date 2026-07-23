@@ -25,6 +25,7 @@ enum ImportedDataCategory: String, CaseIterable, Sendable {
     case bodyBattery
     case respirationRate
     case bloodOxygen
+    case vo2Max
     case steps
     case activeEnergy
     case workouts
@@ -39,6 +40,7 @@ enum ImportedDataCategory: String, CaseIterable, Sendable {
         case .bodyBattery: "Body Battery"
         case .respirationRate: "Respiration Rate"
         case .bloodOxygen: "Blood Oxygen"
+        case .vo2Max: "VO2 Max"
         case .steps: "Steps"
         case .activeEnergy: "Active Energy"
         case .workouts: "Workouts"

@@ -176,4 +176,49 @@ final class GarminRecordClassifierTests: XCTestCase {
         let record: [String: Any] = ["activityType": "running", "startTimeGmt": 1_705_298_400]
         XCTAssertNil(classifier.extractActivity(from: record, source: source))
     }
+
+    // MARK: - Classification + extraction: VO2 Max
+
+    func test_classifiesStandaloneVO2MaxRecord() {
+        let record: [String: Any] = ["calendarDate": "2024-01-15", "vo2MaxValue": 48.5]
+        XCTAssertEqual(classifier.kind(of: record), .vo2Max)
+    }
+
+    func test_extractVO2Max_pullsValueAndAnchorDate() {
+        let record: [String: Any] = ["calendarDate": "2024-01-15", "vo2MaxPreciseValue": 47.2]
+
+        let sample = classifier.extractVO2Max(from: record, source: source)
+
+        XCTAssertEqual(sample?.value, 47.2)
+        XCTAssertEqual(sample?.type, .vo2Max)
+    }
+
+    func test_extractDailySummary_alsoPullsEmbeddedVO2Max() {
+        let record: [String: Any] = [
+            "calendarDate": "2024-01-15",
+            "restingHeartRate": 52,
+            "totalSteps": 8000,
+            "vo2MaxValue": 46.0,
+        ]
+
+        let extraction = classifier.extractDailySummary(from: record, source: source)
+
+        XCTAssertEqual(extraction.vo2Max?.value, 46.0)
+    }
+
+    // MARK: - Extraction: blood oxygen (HealthKit fraction normalization)
+
+    func test_extractBloodOxygen_normalizesGarminWholeNumberPercentageToHealthKitFraction() {
+        let record: [String: Any] = ["startTimeInSeconds": 1_705_298_400, "spo2ValuesMap": ["0": 97, "60": 98]]
+
+        let samples = classifier.extractBloodOxygen(from: record, source: source)
+
+        XCTAssertEqual(samples.count, 2)
+        // HealthKit's oxygenSaturation type requires a 0.0...1.0 fraction,
+        // but Garmin reports a whole-number percentage — this must be
+        // normalized at import time or every downstream reading is 100x too
+        // large (see extractBloodOxygen's implementation comment).
+        XCTAssertTrue(samples.allSatisfy { $0.value <= 1.0 })
+        XCTAssertTrue(samples.contains { abs($0.value - 0.97) < 0.001 })
+    }
 }

@@ -231,6 +231,24 @@ struct HealthInsightEngine {
             if let strain = snapshot.strainScore {
                 result[.strainScore, default: [:]][snapshot.date] = strain
             }
+            if let hrv = snapshot.heartRateVariability {
+                result[.heartRateVariability, default: [:]][snapshot.date] = hrv
+            }
+            if let vo2Max = snapshot.vo2Max {
+                result[.vo2Max, default: [:]][snapshot.date] = vo2Max
+            }
+            if let respiration = snapshot.respirationRate {
+                result[.respirationRate, default: [:]][snapshot.date] = respiration
+            }
+            if let bloodOxygen = snapshot.bloodOxygen {
+                result[.bloodOxygen, default: [:]][snapshot.date] = bloodOxygen
+            }
+            if let stress = snapshot.stress {
+                result[.stress, default: [:]][snapshot.date] = stress
+            }
+            if let bodyBattery = snapshot.bodyBattery {
+                result[.bodyBattery, default: [:]][snapshot.date] = bodyBattery
+            }
         }
         return result
     }

@@ -144,7 +144,7 @@ struct DashboardView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             case .ready(let data):
-                KeyMetricsRow(data: data)
+                KeyMetricsRow(data: data, latestSnapshot: insightsViewModel.latestSnapshot)
             case .noData:
                 Text("No Health data found yet. Make sure Health access is granted in Settings.")
                     .font(.caption)
@@ -282,30 +282,55 @@ private struct MetricStateRow: View {
 
 private struct KeyMetricsRow: View {
     let data: DashboardViewModel.DashboardData
+    /// The richer Garmin metrics (HRV, VO2 Max, Body Battery, Stress) — only
+    /// shown when actually present, since not every source/day produces
+    /// them. `nil` while the longitudinal history is still loading.
+    let latestSnapshot: DailyHealthSnapshot?
 
     var body: some View {
-        HStack(spacing: 12) {
-            KeyMetricTile(
-                symbol: "bolt.heart",
-                tint: .orange,
-                value: data.strain.strain.strainScore.formatted(.number.precision(.fractionLength(0))),
-                label: "Strain",
-                deviation: nil
-            )
-            KeyMetricTile(
-                symbol: "moon.zzz",
-                tint: .indigo,
-                value: Self.sleepValue(data.sleep),
-                label: "Sleep",
-                deviation: nil
-            )
-            KeyMetricTile(
-                symbol: "figure.walk",
-                tint: .green,
-                value: "\(Int(data.activity.totalStepsToday))",
-                label: "Steps",
-                deviation: data.activity.percentageDeviationFromBaseline
-            )
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                KeyMetricTile(
+                    symbol: "bolt.heart",
+                    tint: .orange,
+                    value: data.strain.strain.strainScore.formatted(.number.precision(.fractionLength(0))),
+                    label: "Strain",
+                    deviation: nil
+                )
+                KeyMetricTile(
+                    symbol: "moon.zzz",
+                    tint: .indigo,
+                    value: Self.sleepValue(data.sleep),
+                    label: "Sleep",
+                    deviation: nil
+                )
+                KeyMetricTile(
+                    symbol: "figure.walk",
+                    tint: .green,
+                    value: "\(Int(data.activity.totalStepsToday))",
+                    label: "Steps",
+                    deviation: data.activity.percentageDeviationFromBaseline
+                )
+                if let hrv = latestSnapshot?.heartRateVariability {
+                    KeyMetricTile(symbol: "waveform.path.ecg", tint: .pink, value: "\(Int(hrv.rounded()))", label: "HRV", deviation: nil)
+                }
+                if let vo2Max = latestSnapshot?.vo2Max {
+                    KeyMetricTile(symbol: "lungs", tint: .teal, value: String(format: "%.1f", vo2Max), label: "VO2 Max", deviation: nil)
+                }
+                if let bodyBattery = latestSnapshot?.bodyBattery {
+                    KeyMetricTile(symbol: "battery.75", tint: .mint, value: "\(Int(bodyBattery.rounded()))", label: "Body Battery", deviation: nil)
+                }
+                if let stress = latestSnapshot?.stress {
+                    KeyMetricTile(symbol: "brain.head.profile", tint: .purple, value: "\(Int(stress.rounded()))", label: "Stress", deviation: nil)
+                }
+                if let spo2 = latestSnapshot?.bloodOxygen {
+                    KeyMetricTile(symbol: "drop", tint: .blue, value: "\(Int((spo2 * 100).rounded()))%", label: "Blood Oxygen", deviation: nil)
+                }
+                if let respiration = latestSnapshot?.respirationRate {
+                    KeyMetricTile(symbol: "wind", tint: .cyan, value: String(format: "%.0f", respiration), label: "Respiration", deviation: nil)
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
 
@@ -346,7 +371,7 @@ private struct KeyMetricTile: View {
                 .foregroundStyle(.tertiary)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: 92)
         .padding(.vertical, 14)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }

@@ -38,6 +38,7 @@ enum GarminRecordKind {
     case stressAndBodyBattery
     case respiration
     case bloodOxygen
+    case vo2Max
     case activity
     case unrecognized
 }
@@ -46,6 +47,10 @@ struct GarminDailySummaryExtraction {
     var restingHeartRate: HealthMetricSample?
     var steps: HealthMetricSample?
     var activeEnergy: HealthMetricSample?
+    /// Garmin sometimes reports VO2 Max as a field embedded in the daily
+    /// summary record rather than (or in addition to) its own file — see
+    /// `GarminRecordClassifier.extractVO2Max` for the standalone-file case.
+    var vo2Max: HealthMetricSample?
     var heartRateSamples: [HealthMetricSample] = []
 }
 
@@ -81,6 +86,9 @@ struct GarminRecordClassifier {
         if record.hasAnyKey("spo2ValuesArray", "averageSpo2", "lowestSpo2", "spo2HourlyAverages") {
             return .bloodOxygen
         }
+        if record.hasAnyKey("vo2MaxValue", "vo2MaxPreciseValue", "vo2Max") {
+            return .vo2Max
+        }
         if record.hasAnyKey("activityType", "activityName"),
             record.hasAnyKey("startTimeGmt", "startTimeInSeconds", "beginTimestamp") {
             return .activity
@@ -108,6 +116,9 @@ struct GarminRecordClassifier {
         }
         if let energy = number(record, "activeKilocalories", "activeCalories"), let anchor, let dayEnd {
             result.activeEnergy = HealthMetricSample(type: .activeEnergyBurned, value: energy, startDate: anchor, endDate: dayEnd, source: source)
+        }
+        if let vo2Max = number(record, "vo2MaxValue", "vo2MaxPreciseValue", "vo2Max"), let anchor {
+            result.vo2Max = HealthMetricSample(type: .vo2Max, value: vo2Max, startDate: anchor, endDate: anchor, source: source)
         }
 
         if let baseTime = instant(record, "startTimeInSeconds"),
@@ -190,7 +201,20 @@ struct GarminRecordClassifier {
     func extractBloodOxygen(from record: [String: Any], source: HealthSource) -> [HealthMetricSample] {
         guard let baseTime = instant(record, "startTimeInSeconds"),
             let values = object(record, "spo2ValuesMap", "timeOffsetSleepSpo2") else { return [] }
+        // Garmin reports SpO2 as a whole-number percentage (e.g. 97);
+        // HealthKit's oxygenSaturation type requires a 0.0...1.0 fraction.
         return Self.timeSeries(from: values, baseTime: baseTime, metric: .bloodOxygen, source: source) { $0 > 0 }
+            .map { HealthMetricSample(id: $0.id, type: $0.type, value: $0.value / 100, startDate: $0.startDate, endDate: $0.endDate, source: $0.source) }
+    }
+
+    // MARK: - VO2 Max
+
+    /// A standalone VO2 Max file/record — one value per day, not a time
+    /// series, unlike most other Garmin metrics.
+    func extractVO2Max(from record: [String: Any], source: HealthSource) -> HealthMetricSample? {
+        guard let anchor = instant(record, "calendarDate", "startTimeInSeconds"),
+            let value = number(record, "vo2MaxValue", "vo2MaxPreciseValue", "vo2Max") else { return nil }
+        return HealthMetricSample(type: .vo2Max, value: value, startDate: anchor, endDate: anchor, source: source)
     }
 
     // MARK: - Activity

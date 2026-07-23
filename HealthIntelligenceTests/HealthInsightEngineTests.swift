@@ -189,4 +189,49 @@ final class HealthInsightEngineTests: XCTestCase {
 
         XCTAssertTrue(insights.contains { $0.title.hasPrefix("Today's") }, "Expected a \"Today's ...\" headline, got: \(insights.map(\.title))")
     }
+
+    func test_garminOnlyMetricsLikeHRVAndBodyBatteryFeedTheSamePipelineAsHealthKitMetrics() {
+        var snapshots: [DailyHealthSnapshot] = []
+        for offset in -59...(-8) {
+            let noise = (offset % 2 == 0) ? 1.0 : -1.0
+            snapshots.append(DailyHealthSnapshot(
+                date: day(offset), restingHeartRate: 60, sleepDuration: 7.5 * 3600,
+                steps: 8000, activeEnergy: 400, strainScore: nil,
+                heartRateVariability: 50 + noise, vo2Max: 45, respirationRate: 14 + noise,
+                bloodOxygen: 0.97, stress: 25 + noise, bodyBattery: 70 + noise
+            ))
+        }
+        // Recent week: HRV (a favorable-when-rising metric) and Body Battery
+        // both drop sharply and stay down — a classic "underrecovered"
+        // picture that only the Garmin-sourced metrics can tell.
+        for (index, offset) in (-6...0).enumerated() {
+            snapshots.append(DailyHealthSnapshot(
+                date: day(offset), restingHeartRate: 60, sleepDuration: 7.5 * 3600,
+                steps: 8000, activeEnergy: 400, strainScore: nil,
+                heartRateVariability: 50 - Double(index) * 4, vo2Max: 45, respirationRate: 14,
+                bloodOxygen: 0.97, stress: 25, bodyBattery: 70 - Double(index) * 4
+            ))
+        }
+
+        let insights = HealthInsightEngine().generateInsights(from: snapshots, referenceDate: referenceDate, calendar: calendar)
+
+        // Both unfavorable trends at once may either surface as their own
+        // standalone insights or get folded into a single "emerging
+        // deterioration" pattern (see HealthPatternDetector) — either way,
+        // both Garmin-only metrics must be traceable somewhere in the feed,
+        // not silently dropped the way they were before this metric was
+        // wired into the pipeline.
+        let combinedText = insights
+            .map { [$0.title, $0.narrative, $0.evidence.joined(separator: " ")].joined(separator: " ") }
+            .joined(separator: " | ")
+
+        XCTAssertTrue(
+            combinedText.localizedCaseInsensitiveContains("heart rate variability"),
+            "Expected HRV's decline to be traceable in the feed, got: \(insights.map(\.title))"
+        )
+        XCTAssertTrue(
+            combinedText.localizedCaseInsensitiveContains("body battery"),
+            "Expected Body Battery's decline to be traceable in the feed, got: \(insights.map(\.title))"
+        )
+    }
 }
